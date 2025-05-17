@@ -1,0 +1,68 @@
+version: "3"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: course-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: coursedb
+      MYSQL_USER: courseuser
+      MYSQL_PASSWORD: coursepassword
+    # Không expose port MySQL ra host
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - course-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "courseuser",
+          "-pcoursepassword",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build: ./demo
+    container_name: course-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # Không expose port backend ra host nếu chỉ frontend cần kết nối
+    # Nếu cần testing API thì có thể giữ lại port mapping này
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coursedb?useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: courseuser
+      SPRING_DATASOURCE_PASSWORD: coursepassword
+    networks:
+      - course-network
+    restart: on-failure
+
+  frontend:
+    build: ./fe
+    container_name: course-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80" # Chỉ expose frontend ra host
+    networks:
+      - course-network
+
+volumes:
+  mysql-data:
+
+networks:
+  course-network:
+    driver: bridge
